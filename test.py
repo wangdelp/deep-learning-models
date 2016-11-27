@@ -1,17 +1,22 @@
 from resnet50 import ResNet50
 import numpy as np
-import sugartensor as tf
+import sugartensor as tf 
+from keras.applications import vgg16
+from keras.layers import Input
 from keras import backend as K
 #from imagenet_utils import preprocess_input, decode_predictions
 import ipdb
 
+import sys
+sys.path.append("/home/xeraph/lonestar_ai")
+from x_utils import sampling
 # set session to prevent consuming all GPU memory
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
 sess = tf.Session(config=config)
 K.set_session(sess)
 
-z_dim = 100
+z_dim = 2048 
 image_shape = [224, 224, 3]
 batch_size = 256
 num_cls = 1000
@@ -33,26 +38,36 @@ def generator(z):
 
 z = tf.placeholder(tf.float32, [None] + [z_dim])
 y = tf.placeholder(tf.float32, [None] + [num_cls])
-preds = tf.placeholder(tf.float32, [None] + [num_cls])
+#preds = tf.placeholder(tf.float32, [None] + [num_cls])
 #imgs = tf.placeholder(tf.float32, [None] + image_shape)
+imgs = Input(batch_shape=[None] + image_shape)
 #z = tf.random_uniform((batch_size, z_dim))
 gen = generator(z)
 
-model = ResNet50(weights='imagenet')
+#model = ResNet50(input_tensor=imgs, weights='imagenet')
+model = ResNet50(input_tensor=imgs, weights='imagenet')
+output = model.layers[-1].output
+#model.layers[-1].output.eval(feed_dict={K.learning_phase(): 0, imgs: gen.eval(fd)}
 
+ipdb.set_trace()
 vars = tf.trainable_variables()
 var_gen = [var for var in vars if "generator" in var.name]
-loss = -tf.reduce_sum(y*tf.log(preds))
-train_gen = tf.train.AdamOptimizer(1e-4).minimize(loss, var_list=var_gen)
 
-# only initialize generator variables
-init = tf.initialize_variables(varlist=var_gen)
-sess.run(init)
-
-# get generator into a seperate function module
+# ---- get generator into a seperate function module ----
 # training
-for i in range(1000):
-  ipdb.set_trace()
-  z_, y_ = sampling(sess)
-  preds_ = model.predict(gen.eval(feed_dict={z: z_, y: y_}))
-  train_gen.run(feed_dict={preds: preds_, y: y_}) 
+with sess.as_default():
+  # only initialize generator variables
+  init = tf.initialize_variables(var_gen)
+  sess.run(init)
+  local_ini = tf.initialize_local_variables()
+  sess.run(local_ini)
+
+  for i in range(1000):
+    z_, y_ = sampling(sess, z_dim=z_dim, num_category=1000, bs=batch_size, random=True)
+    ipdb.set_trace()
+    preds = model.predict(gen)
+    #preds = model.predict(gen.eval(feed_dict={z: z_}))
+    loss = -tf.reduce_sum(y*tf.log(preds))
+    train_gen = tf.train.AdamOptimizer(1e-4).minimize(loss, var_list=var_gen)
+    #train_gen.run(feed_dict={preds: preds_, y: y_}) 
+    train_gen.run(feed_dict={y: y_}) 
