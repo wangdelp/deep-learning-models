@@ -45,13 +45,19 @@ imgs = Input(batch_shape=[None] + image_shape)
 gen = generator(z)
 
 #model = ResNet50(input_tensor=imgs, weights='imagenet')
-model = ResNet50(input_tensor=imgs, weights='imagenet')
-output = model.layers[-1].output
+model = ResNet50(input_tensor=gen, weights='imagenet')
+preds = model.layers[-1].output
+loss = -tf.reduce_sum(y*tf.log(preds))
+fd = {K.learning_phase(): 0, imgs: gen.eval({z: z_})}
+
+#preds = output.eval(feed_dict=fd)
 #model.layers[-1].output.eval(feed_dict={K.learning_phase(): 0, imgs: gen.eval(fd)}
 
 ipdb.set_trace()
 vars = tf.trainable_variables()
 var_gen = [var for var in vars if "generator" in var.name]
+var_dis = [var for var in vars if "generator" not in var.name]
+train_gen = tf.train.AdamOptimizer(1e-4).minimize(loss, var_list=var_gen)
 
 # ---- get generator into a seperate function module ----
 # training
@@ -65,9 +71,4 @@ with sess.as_default():
   for i in range(1000):
     z_, y_ = sampling(sess, z_dim=z_dim, num_category=1000, bs=batch_size, random=True)
     ipdb.set_trace()
-    preds = model.predict(gen)
-    #preds = model.predict(gen.eval(feed_dict={z: z_}))
-    loss = -tf.reduce_sum(y*tf.log(preds))
-    train_gen = tf.train.AdamOptimizer(1e-4).minimize(loss, var_list=var_gen)
-    #train_gen.run(feed_dict={preds: preds_, y: y_}) 
-    train_gen.run(feed_dict={y: y_}) 
+    train_gen.run(feed_dict={y: y_, z: z_}) 
