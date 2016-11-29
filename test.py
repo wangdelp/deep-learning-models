@@ -49,6 +49,8 @@ gen = generator(z)
 model = ResNet50(input_tensor=gen, weights='imagenet')
 preds = model.layers[-1].output
 loss = -tf.reduce_sum(y*tf.log(preds))
+correct = tf.equal(tf.argmax(preds, 1), tf.argmax(y, 1))
+accu = tf.reduce_mean(tf.cast(correct, tf.float32))
 #fd = {K.learning_phase(): 0, imgs: gen.eval({z: z_})}
 
 vars = tf.trainable_variables()
@@ -73,11 +75,14 @@ with sess.as_default():
   local_ini = tf.initialize_local_variables()
   sess.run(local_ini)
 
-  ipdb.set_trace()
-  for i in range(10):
+  for i in range(10000):
     z_, y_ = sampling(sess, z_dim=z_dim, num_category=1000, bs=batch_size, random=True)
+    if i%1000 == 0:
+      imgs =  gen.eval({z: z_})
+      save_images(imgs, [np.ceil(batch_size/8.0), 8], ".imgs/generated.png")
+      ipdb.set_trace()
+    if i%100 == 0:
+      train_accuracy = accu.eval(feed_dict={z: z_, y: y_})
+      print("step %d, training accuracy %g"%(i, train_accuracy))
     train_gen.run(feed_dict={y: y_, z: z_, K.learning_phase(): 1}) 
-
-  imgs =  gen.eval({z: z_})
-  save_images(imgs, [np.ceil(batch_size/8.0), 8], "./generated.png")
   ipdb.set_trace()
