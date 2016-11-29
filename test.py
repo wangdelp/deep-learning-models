@@ -1,7 +1,6 @@
 from resnet50 import ResNet50
 import numpy as np
 import sugartensor as tf 
-from keras.applications import vgg16
 from keras.layers import Input
 from keras import backend as K
 #from imagenet_utils import preprocess_input, decode_predictions
@@ -10,6 +9,7 @@ import ipdb
 import sys
 sys.path.append("/home/xeraph/lonestar_ai")
 from x_utils import sampling
+from image_utils import save_images
 # set session to prevent consuming all GPU memory
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
@@ -18,7 +18,8 @@ K.set_session(sess)
 
 z_dim = 2048 
 image_shape = [224, 224, 3]
-batch_size = 256
+# 32 ~ 9GB
+batch_size = 48 
 num_cls = 1000
 
 # construct generator
@@ -39,36 +40,44 @@ def generator(z):
 z = tf.placeholder(tf.float32, [None] + [z_dim])
 y = tf.placeholder(tf.float32, [None] + [num_cls])
 #preds = tf.placeholder(tf.float32, [None] + [num_cls])
-#imgs = tf.placeholder(tf.float32, [None] + image_shape)
-imgs = Input(batch_shape=[None] + image_shape)
+#imgs = Input(batch_shape=[None] + image_shape)
 #z = tf.random_uniform((batch_size, z_dim))
-gen = generator(z)
 
 #model = ResNet50(input_tensor=imgs, weights='imagenet')
+# glue the generator with discriminator using input_tensor
+gen = generator(z)
 model = ResNet50(input_tensor=gen, weights='imagenet')
 preds = model.layers[-1].output
 loss = -tf.reduce_sum(y*tf.log(preds))
-fd = {K.learning_phase(): 0, imgs: gen.eval({z: z_})}
+#fd = {K.learning_phase(): 0, imgs: gen.eval({z: z_})}
 
-#preds = output.eval(feed_dict=fd)
-#model.layers[-1].output.eval(feed_dict={K.learning_phase(): 0, imgs: gen.eval(fd)}
-
-ipdb.set_trace()
 vars = tf.trainable_variables()
 var_gen = [var for var in vars if "generator" in var.name]
 var_dis = [var for var in vars if "generator" not in var.name]
+
+# ALTERNATIVE: use other optmizer to prevent beta1_power error
+var_before = tf.all_variables()
 train_gen = tf.train.AdamOptimizer(1e-4).minimize(loss, var_list=var_gen)
+var_after = tf.all_variables()
+var_adam = list(set(var_after).difference(var_before))
 
 # ---- get generator into a seperate function module ----
 # training
 with sess.as_default():
   # only initialize generator variables
   init = tf.initialize_variables(var_gen)
+  #tf.sg_init(sess)  # would also initilize discriminator variables
   sess.run(init)
+  adam_ini = tf.initialize_variables(var_adam)
+  sess.run(adam_ini)
   local_ini = tf.initialize_local_variables()
   sess.run(local_ini)
 
-  for i in range(1000):
+  ipdb.set_trace()
+  for i in range(10):
     z_, y_ = sampling(sess, z_dim=z_dim, num_category=1000, bs=batch_size, random=True)
-    ipdb.set_trace()
-    train_gen.run(feed_dict={y: y_, z: z_}) 
+    train_gen.run(feed_dict={y: y_, z: z_, K.learning_phase(): 1}) 
+
+  imgs =  gen.eval({z: z_})
+  save_images(imgs, [np.ceil(batch_size/8.0), 8], "./generated.png")
+  ipdb.set_trace()
