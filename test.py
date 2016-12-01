@@ -3,7 +3,7 @@ import numpy as np
 import sugartensor as tf 
 from keras.layers import Input
 from keras import backend as K
-#from imagenet_utils import preprocess_input, decode_predictions
+from imagenet_utils import preprocess_input, decode_predictions
 import ipdb
 
 import sys
@@ -59,7 +59,7 @@ var_dis = [var for var in vars if "generator" not in var.name]
 
 # ALTERNATIVE: use other optmizer to prevent beta1_power error
 var_before = tf.all_variables()
-train_gen = tf.train.AdamOptimizer(1e-4).minimize(loss, var_list=var_gen)
+train_gen = tf.train.AdamOptimizer(1e-3).minimize(loss, var_list=var_gen)
 var_after = tf.all_variables()
 var_adam = list(set(var_after).difference(var_before))
 
@@ -75,14 +75,25 @@ with sess.as_default():
   local_ini = tf.initialize_local_variables()
   sess.run(local_ini)
 
-  for i in range(10000):
+  for i in range(30000):
     z_, y_ = sampling(sess, z_dim=z_dim, num_category=1000, bs=batch_size, random=True)
-    if i%1000 == 0:
-      imgs =  gen.eval({z: z_})
-      save_images(imgs, [np.ceil(batch_size/8.0), 8], ".imgs/generated.png")
-      ipdb.set_trace()
+
+    fd = {z: z_, y: y_, K.learning_phase(): 1}
+    if i%3000 ==0:
+      imgs = gen.eval(feed_dict={z: z_})
+      save_images(imgs, [np.ceil(batch_size/8.0), 8], "./imgs/generated_{}.png".format(i))
+      #ipdb.set_trace()
+
     if i%100 == 0:
-      train_accuracy = accu.eval(feed_dict={z: z_, y: y_})
-      print("step %d, training accuracy %g"%(i, train_accuracy))
+      train_accuracy = accu.eval(feed_dict=fd)
+      loss_val = loss.eval(fd)
+      print("step %d, training accuracy %g, loss: %g"%(i, train_accuracy, loss_val))
+
     train_gen.run(feed_dict={y: y_, z: z_, K.learning_phase(): 1}) 
+
   ipdb.set_trace()
+  imgs = gen.eval(feed_dict={z: z_})
+  save_images(imgs, [np.ceil(batch_size/8.0), 8], "./imgs/generated_{}.png".format(i))
+  save_images(imgs[0:2, :], [1, 2], "./imgs/generated_large.png")
+  y_vec = decode_predictions(y_)
+  y_pres = decode_predictions(preds.eval(fd))
