@@ -16,7 +16,7 @@ config.gpu_options.allow_growth = True
 sess = tf.Session(config=config)
 K.set_session(sess)
 
-lam = 1e-3
+lam = 1e-6
 z_dim = 2048 
 image_shape = [224, 224, 3]
 # 32 ~ 9GB
@@ -26,7 +26,6 @@ num_cls = 1000
 # construct generator
 def generator(z):
   with tf.sg_context(name='generator', size=4, stride=2, act='relu', bn=True):
-  
     # generator network
     gen = (z.sg_dense(dim=2048)
            .sg_dense(dim=7*7*128)
@@ -51,7 +50,9 @@ model = ResNet50(input_tensor=gen, weights='imagenet')
 preds = model.layers[-1].output
 correct = tf.equal(tf.argmax(preds, 1), tf.argmax(y, 1))
 accu = tf.reduce_mean(tf.cast(correct, tf.float32))
-loss_pred = -tf.reduce_sum(y*tf.log(preds))
+#loss_pred = -tf.reduce_sum(y*tf.log(preds + 1e-10))
+loss_pred = -tf.reduce_sum(y*tf.log(tf.clip_by_value(preds, 1e-8, 1.0)))
+#loss_pred = -tf.reduce_sum(y*tf.log(preds))
 #fd = {K.learning_phase(): 0, imgs: gen.eval({z: z_})}
 
 vars = tf.trainable_variables()
@@ -64,7 +65,7 @@ loss = loss_pred + lam * loss_reg
 var_before = tf.all_variables()
 # learning rate and global_step variable
 var_lr_step = list(set(var_before).difference(set(vars)))
-train_gen = tf.train.AdamOptimizer(1e-3).minimize(loss, var_list=var_gen)
+train_gen = tf.train.AdamOptimizer(1e-4).minimize(loss, var_list=var_gen)
 var_after = tf.all_variables()
 var_adam = list(set(var_after).difference(var_before))
 
@@ -82,11 +83,11 @@ with sess.as_default():
   lr_step_ini = tf.initialize_variables(var_lr_step)
   sess.run(lr_step_ini)
 
-  for i in range(40000):
+  for i in range(30000):
     z_, y_ = sampling(sess, z_dim=z_dim, num_category=1000, bs=batch_size, random=True)
 
     fd = {z: z_, y: y_, K.learning_phase(): 1}
-    if i%3000 ==0:
+    if i%3000 == 0:
       imgs = gen.eval(feed_dict={z: z_})
       save_images(imgs, [np.ceil(batch_size/8.0), 8], "./imgs/generated_{}.png".format(i))
       #ipdb.set_trace()
