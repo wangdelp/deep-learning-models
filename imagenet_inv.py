@@ -34,7 +34,7 @@ def generator(z):
            .sg_upconv(dim=24)
            .sg_upconv(dim=12)
            .sg_upconv(dim=6)
-           .sg_upconv(dim=3, act='sigmoid', bn=False))
+           .sg_upconv(dim=3, act='tanh', bn=False))
     return gen
 
 z = tf.placeholder(tf.float32, [None] + [z_dim])
